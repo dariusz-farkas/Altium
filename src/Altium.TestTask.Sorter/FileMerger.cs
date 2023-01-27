@@ -25,7 +25,6 @@ internal class FileMerger : IMerger
         const string mergePrefix = "merged";
         var pendingFiles = new ConcurrentBag<string>(fileNames);
 
-        string? mergedFilePath = null;
         int level = 0;
         int totalChunks = 0;
 
@@ -42,9 +41,6 @@ internal class FileMerger : IMerger
             var chunks = pendingFiles.Chunk(_mergeOptions.ChunkSize).ToList();
             pendingFiles.Clear();
 
-
-            //foreach (var chunk in chunks)
-            //{
             await Parallel.ForEachAsync(chunks, parallelOptions, async (chunk, ct) =>
             {
                 var mergedFileName = $"{mergePrefix}-{Guid.NewGuid()}.data";
@@ -52,7 +48,7 @@ internal class FileMerger : IMerger
                 _logger.LogInformation("[Level: {level}][Chunk {totalChunks}]\t Merging {count} files into {file}",
                     level, totalChunks, chunk.Length, mergedFileName);
 
-                mergedFilePath = _fileSystem.GetFullPath(mergedFileName);
+                var mergedFilePath = _fileSystem.GetFullPath(mergedFileName);
 
                 if (chunk.Length == 1)
                 {
@@ -74,17 +70,12 @@ internal class FileMerger : IMerger
                 }
 
                 Interlocked.Increment(ref totalChunks);
-                //totalChunks++;
             });
-
-            
-
-            //}
 
             level++;
         } while (pendingFiles.Count > 1);
 
-        return mergedFilePath;
+        return pendingFiles.Single();
     }
 
     private async Task MergeFiles(string[] chunk, string fullPath, CancellationToken cancellationToken)

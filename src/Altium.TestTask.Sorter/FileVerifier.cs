@@ -12,10 +12,16 @@ public class FileVerifier
         _fileSystem = fileSystem;
     }
 
-    public async Task<bool> Verify(string path, CancellationToken cancellationToken)
+    public async Task<bool> Verify(string unsortedFile, string sortedFile, CancellationToken cancellationToken)
     {
-        using var fileStream = _fileSystem.File.OpenRead(path);
+        var sourceSize = _fileSystem.FileInfo.New(unsortedFile).Length;
+        using var fileStream = _fileSystem.File.OpenRead(sortedFile);
         using var reader = new StreamReader(fileStream);
+
+        if (sourceSize != fileStream.Length)
+        {
+            return false;
+        }
 
         var left = await reader.ReadLineAsync(cancellationToken);
         if (string.IsNullOrEmpty(left))

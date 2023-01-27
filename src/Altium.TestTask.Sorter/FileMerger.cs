@@ -22,6 +22,11 @@ internal class FileMerger : IMerger
 
     public async Task<string?> Merge(IReadOnlyCollection<string> fileNames, CancellationToken cancellationToken)
     {
+        if (_mergeOptions.ChunkSize < 2)
+        {
+            throw new InvalidOperationException("Cannot merge files with chink size lower than 2");
+        }
+
         const string mergePrefix = "merged";
         var pendingFiles = new ConcurrentBag<string>(fileNames);
 
@@ -66,7 +71,7 @@ internal class FileMerger : IMerger
                 {
                     pendingFiles.Add(mergedFileName);
                     var filePaths = chunk.Select(_fileSystem.GetFullPath).ToArray();
-                    await MergeFiles(filePaths, mergedFilePath, cancellationToken);
+                    await MergeFiles(filePaths, mergedFilePath, ct);
                 }
 
                 Interlocked.Increment(ref totalChunks);
@@ -75,7 +80,7 @@ internal class FileMerger : IMerger
             level++;
         } while (pendingFiles.Count > 1);
 
-        return pendingFiles.Single();
+        return _fileSystem.GetFullPath(pendingFiles.Single());
     }
 
     private async Task MergeFiles(string[] chunk, string fullPath, CancellationToken cancellationToken)
@@ -84,63 +89,63 @@ internal class FileMerger : IMerger
 
         // initialize
         var streamDictionary = chunk.ToDictionary(x => x, x => new StreamReader(_fileSystem.File.OpenRead(x)));
-        var sortedList = new SortedSet<(string, string)>(new SetCustomComparer());
+        var sortedQueue = new SortedBufferQueue<string, string>(new CustomComparer());
 
-        await PreFillSortedList(streamDictionary, sortedList, cancellationToken);
+        await PreFillSortedList(streamDictionary, sortedQueue, cancellationToken);
 
         // we always have a copy of sorted list of current values from each of the streams
-        while (sortedList.Count > 0)
+        while (sortedQueue.TryDequeue(out var min, out var path))
         {
-            var minElement = sortedList.First();
-            var (min, path) = minElement;
-            sortedList.Remove(minElement);
-
             await streamWriter.WriteLineAsync(min.AsMemory(), cancellationToken);
 
             var affectedStream = streamDictionary[path];
 
             if (affectedStream.EndOfStream)
             {
-                RemoveStream(cancellationToken, affectedStream, streamDictionary, path);
+                RemoveStream(path, affectedStream, streamDictionary, cancellationToken);
                 continue;
             }
 
             var line = await affectedStream.ReadLineAsync(cancellationToken);
             if (string.IsNullOrEmpty(line))
             {
-                RemoveStream(cancellationToken, affectedStream, streamDictionary, path);
+                RemoveStream(path, affectedStream, streamDictionary, cancellationToken);
                 continue;
             }
 
-            sortedList.Add((line, path));
+            sortedQueue.Add(line, path);
         }
     }
 
-    private void RemoveStream(CancellationToken cancellationToken, StreamReader affectedStream, Dictionary<string, StreamReader> streamDictionary,
-        string path)
+    private void RemoveStream(string path,
+        StreamReader affectedStream,
+        Dictionary<string, StreamReader> streamDictionary,
+        CancellationToken cancellationToken)
     {
         affectedStream.Dispose();
         streamDictionary.Remove(path);
-        _ = Task.Run(() => _fileSystem.File.Delete(path), cancellationToken);
+        var temporaryPath = _fileSystem.Path.Combine(_fileSystem.Path.GetTempPath(), $"{Guid.NewGuid()}-remove.data");
+        _fileSystem.File.Move(path, temporaryPath);
+        _ = Task.Run(() => _fileSystem.File.Delete(temporaryPath), cancellationToken);
     }
 
     private static async Task PreFillSortedList(
         Dictionary<string, StreamReader> streamDictionary,
-        SortedSet<(string, string)> sortedList,
+        SortedBufferQueue<string, string> sortedBufferQueue,
         CancellationToken cancellationToken)
     {
         var streamsToRemove = new List<string>();
-        foreach (var (key, stream) in streamDictionary)
+        foreach (var (filePath, stream) in streamDictionary)
         {
             var line = await stream.ReadLineAsync(cancellationToken);
             if (line != null)
             {
-                sortedList.Add((line, key));
+                sortedBufferQueue.Add(line, filePath);
             }
             else
             {
                 stream.Dispose();
-                streamsToRemove.Add(key);
+                streamsToRemove.Add(filePath);
             }
         }
 

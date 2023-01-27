@@ -49,8 +49,8 @@ async Task<int> Verify(VerifyOption options, IServiceProvider sp, CancellationTo
 {
     options.Validate();
     var generator = sp.GetRequiredService<FileVerifier>();
-    var rs = await generator.Verify( options.File, cancellationToken);
-    Console.WriteLine($"File {options.File} is sorted: {rs}");
+    var rs = await generator.Verify(options.UnsortedFile, options.SortedFile, cancellationToken);
+    Console.WriteLine($"File {options.SortedFile} is sorted: {rs}");
 
     return 0;
 }

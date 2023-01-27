@@ -12,7 +12,6 @@ namespace Altium.TestTask.Sorter.Tests.FileSorterTests;
 [TestFixture]
 public class SortTests : UnitTestBase<SortTestsContext>
 {
- 
     [Test]
     public async Task WhenSorted_ShouldSortLinesInCorrectOrder()
     {

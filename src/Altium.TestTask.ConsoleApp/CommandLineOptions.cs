@@ -38,14 +38,22 @@ class CreateOption
 [Verb("verify", HelpText = "Verify test file.")]
 class VerifyOption
 {
-    [Option('f', "file", Required = true, HelpText = "Select file to verify.")]
-    public string File { get; set; } = null!;
+    [Option('u', "unsorted", Required = true, HelpText = "Select unsorted source file.")]
+    public string UnsortedFile { get; set; } = null!;
+
+    [Option('s', "sorted", Required = true, HelpText = "Select sorted file to verify.")]
+    public string SortedFile { get; set; } = null!;
 
     public void Validate()
     {
-        if (!System.IO.File.Exists(File))
+        if (!System.IO.File.Exists(UnsortedFile))
         {
-            throw new ArgumentException("File does not exists");
+            throw new ArgumentException("Unsorted file does not exists");
+        }
+
+        if (!System.IO.File.Exists(SortedFile))
+        {
+            throw new ArgumentException("Sorted file does not exists");
         }
     }
 }

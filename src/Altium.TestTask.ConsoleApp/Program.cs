@@ -5,31 +5,23 @@ using Altium.TestTask.Sorter.Models;
 using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 
-var serviceProvider = ConsoleHost.BuildServiceProvider();
+var (serviceProvider, token) = ConsoleHost.Build();
 
-var cts = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) =>
+return await ConsoleHost.Run(async () =>
 {
-    Console.WriteLine("Canceling...");
-    cts.Cancel();
-    e.Cancel = true;
-};
+    return await Parser.Default.ParseArguments<SortOption, CreateOption, VerifyOption>(args)
+        .MapResult(
+            (SortOption options) => Sort(options, serviceProvider, token),
+            (CreateOption options) => Create(options, serviceProvider, token),
+            (VerifyOption options) => Verify(options, serviceProvider, token),
+            _ => Task.FromResult(0));
+});
 
-return await Parser.Default.ParseArguments<SortOption, CreateOption>(args)
-    .MapResult(
-        (SortOption options) => Sort(options, serviceProvider, cts.Token),
-        (CreateOption options) => Create(options, serviceProvider, cts.Token),
-        _ => Task.FromResult(0));
-
-
-async Task<int> Sort(SortOption sortOption, IServiceProvider sp, CancellationToken cancellationTokenSource)
+async Task<int> Sort(SortOption options, IServiceProvider sp, CancellationToken cancellationTokenSource)
 {
-    var file = new TestFile(sortOption.File);
-    if (!file.IsValid())
-    {
-        Console.Error.WriteLine("File does not exists.");
-        return 1;
-    }
+    options.Validate();
+
+    var file = new TestFile(options.File);
 
     var orchestrator = sp.GetRequiredService<ISortOrchestrator>();
     var output = await orchestrator.Execute(file, cancellationTokenSource);
@@ -44,8 +36,19 @@ async Task<int> Sort(SortOption sortOption, IServiceProvider sp, CancellationTok
 
 async Task<int> Create(CreateOption options, IServiceProvider sp, CancellationToken cancellationToken)
 {
+    options.Validate();
+    
     var generator = sp.GetRequiredService<FileGenerator>();
-    await generator.Generate(options.Size.ValueInKb, options.File, cancellationToken);
+    await generator.Generate(options.Size.ByteLength, options.File, cancellationToken);
+
+    return 0;
+}
+async Task<int> Verify(VerifyOption options, IServiceProvider sp, CancellationToken cancellationToken)
+{
+    options.Validate();
+    var generator = sp.GetRequiredService<FileVerifier>();
+    var rs = await generator.Verify( options.File, cancellationToken);
+    Console.WriteLine($"File {options.File} is sorted: {rs}");
 
     return 0;
 }

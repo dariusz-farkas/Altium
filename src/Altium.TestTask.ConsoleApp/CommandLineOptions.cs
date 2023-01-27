@@ -8,6 +8,13 @@ class SortOption
 {
     [Option('f', "file", Required = true, HelpText = "Select file to sort.")]
     public string File { get; set; } = null!;
+    public void Validate()
+    {
+        if (!System.IO.File.Exists(File))
+        {
+            throw new ArgumentException("File does not exists");
+        }
+    }
 }
 
 [Verb("create", HelpText = "Create test file.")]
@@ -17,7 +24,35 @@ class CreateOption
     public string File { get; set; } = null!;
 
     [Option('s', "size", Required = true, HelpText = "Select target size of the file. Number followed by unit [mb, gb, kb].")]
-    public Size Size { get; set; }
+    public Size Size { get; set; } = null!;
+
+    public void Validate()
+    {
+        if (!System.IO.File.Exists(File))
+        {
+            throw new ArgumentException("File does not exists");
+        }
+
+        if (Size.ByteLength is < 100L && Size.ByteLength > 128849018880L)
+        {
+            throw new ArgumentException("File size invalid. Please provide a value between 100 bytes nad 120 gb.");
+        }
+    }
+}
+
+[Verb("verify", HelpText = "Verify test file.")]
+class VerifyOption
+{
+    [Option('f', "file", Required = true, HelpText = "Select file to verify.")]
+    public string File { get; set; } = null!;
+
+    public void Validate()
+    {
+        if (!System.IO.File.Exists(File))
+        {
+            throw new ArgumentException("File does not exists");
+        }
+    }
 }
 
 sealed class Size
@@ -29,12 +64,12 @@ sealed class Size
         if (rs.Success)
         {
             var length = long.Parse(rs.Groups[0].Value);
-            ValueInKb = rs.Groups[1].Value switch
+            ByteLength = rs.Groups[1].Value switch
             {
-                "mb" => length * 1024,
-                "kb" => length,
-                "gb" => length * 1024 * 1024,
-                _ => ValueInKb
+                "mb" => length * 1024 * 1024,
+                "kb" => length * 1024,
+                "gb" => length * 1024 * 1024 * 1024,
+                _ => ByteLength
             };
         }
         else
@@ -44,6 +79,6 @@ sealed class Size
 
     }
 
-    public long ValueInKb { get; private set; }
+    public long ByteLength { get; private set; }
 
 }

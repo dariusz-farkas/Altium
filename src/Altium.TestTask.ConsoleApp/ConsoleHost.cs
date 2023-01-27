@@ -1,4 +1,5 @@
 ﻿using Altium.TestTask.Sorter.Configuration;
+using Altium.TestTask.Sorter.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -7,7 +8,7 @@ namespace Altium.TestTask.ConsoleApp;
 
 internal static class ConsoleHost
 {
-    public static ServiceProvider BuildServiceProvider()
+    public static (ServiceProvider serviceProvider, CancellationToken token) Build()
     {
         IConfiguration config = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json")
@@ -21,6 +22,29 @@ internal static class ConsoleHost
             .Configure<PartitionOptions>(config.GetSection(PartitionOptions.Partition))
             .Configure<FileSystemOptions>(config.GetSection(FileSystemOptions.FileSystem));
 
-        return services.BuildServiceProvider();
+        var sp = services.BuildServiceProvider();
+
+        var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            Console.WriteLine("Canceling...");
+            cts.Cancel();
+            e.Cancel = true;
+        };
+
+        return (sp, cts.Token);
+    }
+
+    public static async Task<int> Run(Func<Task<int>> action)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message);
+            return 0;
+        }
     }
 }

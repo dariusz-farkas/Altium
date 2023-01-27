@@ -2,7 +2,7 @@
 using Altium.TestTask.Sorter.Utilities;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Altium.TestTask.Sorter.Configuration;
+namespace Altium.TestTask.Sorter.Extensions;
 
 public static class ServiceCollectionExtensions
 {
@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
             .AddSingleton<ISortOrchestrator, ExternalMergeSortOrchestrator>()
             .Decorate<ISortOrchestrator, PreparedSortOrchestrator>()
             .AddSingleton<IFileSystem, AltiumFileSystem>()
-            .AddSingleton<FileGenerator>();
+            .AddSingleton<FileGenerator>()
+            .AddSingleton<FileVerifier>();
     }
 }

@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Altium.TestTask.ConsoleApp": {
+      "commandName": "Project",
+      "commandLineArgs": "C:\\Altium\\input-1.txt"
+    }
+  }
+}

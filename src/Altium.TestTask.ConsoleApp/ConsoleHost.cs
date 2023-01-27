@@ -3,6 +3,7 @@ using Altium.TestTask.Sorter.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace Altium.TestTask.ConsoleApp;
 
@@ -37,6 +38,9 @@ internal static class ConsoleHost
 
     public static async Task<int> Run(Func<Task<int>> action)
     {
+        var stopwatch = new Stopwatch();
+        stopwatch.Start();
+
         try
         {
             return await action();
@@ -45,6 +49,11 @@ internal static class ConsoleHost
         {
             await Console.Error.WriteLineAsync(ex.Message);
             return 0;
+        }
+        finally
+        {
+            stopwatch.Stop();
+            Console.WriteLine("Elapsed time is {0}", stopwatch.Elapsed);
         }
     }
 }

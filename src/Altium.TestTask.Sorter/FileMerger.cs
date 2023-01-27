@@ -1,4 +1,5 @@
-﻿using Altium.TestTask.Sorter.Abstractions;
+﻿using System.Collections.Concurrent;
+using Altium.TestTask.Sorter.Abstractions;
 using Altium.TestTask.Sorter.Configuration;
 using Altium.TestTask.Sorter.Utilities;
 using Microsoft.Extensions.Logging;
@@ -22,11 +23,18 @@ internal class FileMerger : IMerger
     public async Task<string?> Merge(IReadOnlyCollection<string> fileNames, CancellationToken cancellationToken)
     {
         const string mergePrefix = "merged";
-        var pendingFiles = fileNames.ToList();
+        var pendingFiles = new ConcurrentBag<string>(fileNames);
 
         string? mergedFilePath = null;
         int level = 0;
         int totalChunks = 0;
+
+        var parallelOptions = new ParallelOptions
+        {
+            CancellationToken = cancellationToken,
+            MaxDegreeOfParallelism = _mergeOptions.MaxParallelism
+        };
+
         do
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -34,12 +42,15 @@ internal class FileMerger : IMerger
             var chunks = pendingFiles.Chunk(_mergeOptions.ChunkSize).ToList();
             pendingFiles.Clear();
 
-            foreach (var chunk in chunks)
+
+            //foreach (var chunk in chunks)
+            //{
+            await Parallel.ForEachAsync(chunks, parallelOptions, async (chunk, ct) =>
             {
                 var mergedFileName = $"{mergePrefix}-{Guid.NewGuid()}.data";
 
                 _logger.LogInformation("[Level: {level}][Chunk {totalChunks}]\t Merging {count} files into {file}",
-                    level, totalChunks, chunks.Count, mergedFileName);
+                    level, totalChunks, chunk.Length, mergedFileName);
 
                 mergedFilePath = _fileSystem.GetFullPath(mergedFileName);
 
@@ -49,7 +60,7 @@ internal class FileMerger : IMerger
                     if (fileName.StartsWith(mergePrefix))
                     {
                         pendingFiles.Add(fileName);
-                        continue;
+                        return;
                     }
 
                     pendingFiles.Add(mergedFileName);
@@ -62,8 +73,13 @@ internal class FileMerger : IMerger
                     await MergeFiles(filePaths, mergedFilePath, cancellationToken);
                 }
 
-                totalChunks++;
-            }
+                Interlocked.Increment(ref totalChunks);
+                //totalChunks++;
+            });
+
+            
+
+            //}
 
             level++;
         } while (pendingFiles.Count > 1);
@@ -77,15 +93,16 @@ internal class FileMerger : IMerger
 
         // initialize
         var streamDictionary = chunk.ToDictionary(x => x, x => new StreamReader(_fileSystem.File.OpenRead(x)));
-        var sortedList = new SortedList<string, string>(chunk.Length, new CustomComparer());
+        var sortedList = new SortedSet<(string, string)>(new SetCustomComparer());
 
         await PreFillSortedList(streamDictionary, sortedList, cancellationToken);
 
         // we always have a copy of sorted list of current values from each of the streams
         while (sortedList.Count > 0)
         {
-            var (min, path) = sortedList.First();
-            sortedList.Remove(min);
+            var minElement = sortedList.First();
+            var (min, path) = minElement;
+            sortedList.Remove(minElement);
 
             await streamWriter.WriteLineAsync(min.AsMemory(), cancellationToken);
 
@@ -104,7 +121,7 @@ internal class FileMerger : IMerger
                 continue;
             }
 
-            sortedList.Add(line, path);
+            sortedList.Add((line, path));
         }
     }
 
@@ -118,7 +135,7 @@ internal class FileMerger : IMerger
 
     private static async Task PreFillSortedList(
         Dictionary<string, StreamReader> streamDictionary,
-        SortedList<string, string> sortedList,
+        SortedSet<(string, string)> sortedList,
         CancellationToken cancellationToken)
     {
         var streamsToRemove = new List<string>();
@@ -127,7 +144,7 @@ internal class FileMerger : IMerger
             var line = await stream.ReadLineAsync(cancellationToken);
             if (line != null)
             {
-                sortedList.Add(line, key);
+                sortedList.Add((line, key));
             }
             else
             {

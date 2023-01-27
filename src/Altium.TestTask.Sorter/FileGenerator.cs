@@ -1,48 +1,43 @@
 ﻿using System.Text;
 using Altium.TestTask.Sorter.Abstractions;
+using Altium.TestTask.Sorter.Configuration;
 using Bogus;
+using Microsoft.Extensions.Options;
 
 namespace Altium.TestTask.Sorter;
 
 public class FileGenerator
 {
     private readonly IFileSystem _fileSystem;
-    public FileGenerator(IFileSystem fileSystem)
+    private readonly IOptions<SortOptions> _options;
+
+    public FileGenerator(IFileSystem fileSystem, IOptions<SortOptions> options)
     {
         _fileSystem = fileSystem;
+        _options = options;
     }
 
-    public async Task Generate(long byteSize, string path, CancellationToken cancellationToken)
+    public async Task<long> Generate(long byteSize, string path, CancellationToken cancellationToken)
     {
-        await using var stream = _fileSystem.File.Create(path);
+        await using var stream = _fileSystem.File.Create(path, bufferSize: _options.Value.OutputBufferSize);
 
         var randomizer = new Faker().Random;
 
         var duplicated = GetRequiredDuplications(byteSize, randomizer);
 
+        bool ShouldUseDuplicatedWord(uint intPart) => intPart % 30 == 1 && duplicated.Any();
+
         var byteAllocated = 0L;
+        var maxIntPart = (uint) byteSize / 1000;
         while (byteAllocated < byteSize)
         {
             // decide whether take duplicated string or generate fresh new.
-            var intPart = randomizer.UInt(0, 100000);
+            
+            var intPart = randomizer.UInt(0, maxIntPart);
 
-            string stringPart;
-            if (intPart % 10 == 1)
-            {
-                var index = randomizer.Int(0, duplicated.Count);
-                (stringPart, _) = duplicated.ElementAt(index);
-
-                duplicated[stringPart]--;
-                if (duplicated[stringPart] <= 0)
-                {
-                    duplicated.Remove(stringPart);
-                }
-            }
-            else
-            {
-                stringPart = string.Join(' ',
-                    Enumerable.Range(0, randomizer.Byte(1, 5)).Select(_ => randomizer.String(4, 10)));
-            }
+            var stringPart = ShouldUseDuplicatedWord(intPart)
+                ? GetLineFromDuplicatedDict(randomizer, duplicated)
+                : GenerateStringLine(randomizer);
 
             var line = $"{intPart}. {stringPart}\r\n";
 
@@ -51,6 +46,21 @@ public class FileGenerator
             await stream.WriteAsync(lineBytes, 0, lineBytes.Length, cancellationToken);
         }
 
+        return byteAllocated;
+    }
+
+    private static string GetLineFromDuplicatedDict(Randomizer randomizer, Dictionary<string, int> duplicated)
+    {
+        var index = randomizer.Int(0, duplicated.Count - 1);
+        var (stringPart, _) = duplicated.ElementAt(index);
+
+        duplicated[stringPart]--;
+        if (duplicated[stringPart] <= 0)
+        {
+            duplicated.Remove(stringPart);
+        }
+
+        return stringPart;
     }
 
     private static Dictionary<string, int> GetRequiredDuplications(long byteSize, Randomizer randomizer)
@@ -61,11 +71,10 @@ public class FileGenerator
         var dupIndex = 0;
         while (dupIndex < maxDuplicatedWordsSize)
         {
-            var wordCount = randomizer.Byte(1, 5);
             string stringPart;
             do
             {
-                stringPart = string.Join(' ', Enumerable.Range(0, wordCount).Select(_ => randomizer.String(4, 10)));
+                stringPart = GenerateStringLine(randomizer);
             } while (duplicated.ContainsKey(stringPart));
 
             var dupCount = randomizer.Byte(1, 5);
@@ -77,4 +86,9 @@ public class FileGenerator
 
         return duplicated;
     }
+
+    private static string GenerateStringLine(Randomizer randomizer) =>
+        string.Join(' ',
+            Enumerable.Range(0, randomizer.Byte(1, 5)).Select(_ => randomizer.Word()/*String2(4, 10)*/));
+
 }

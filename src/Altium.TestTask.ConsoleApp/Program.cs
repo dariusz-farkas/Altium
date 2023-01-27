@@ -2,12 +2,13 @@
 using Altium.TestTask.Sorter;
 using Altium.TestTask.Sorter.Abstractions;
 using Altium.TestTask.Sorter.Models;
+using Altium.TestTask.Sorter.Utilities;
 using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 
 var (serviceProvider, token) = ConsoleHost.Build();
 
-return await ConsoleHost.Run(async () =>
+var rs = await ConsoleHost.Run(async () =>
 {
     return await Parser.Default.ParseArguments<SortOption, CreateOption, VerifyOption>(args)
         .MapResult(
@@ -39,8 +40,9 @@ async Task<int> Create(CreateOption options, IServiceProvider sp, CancellationTo
     options.Validate();
     
     var generator = sp.GetRequiredService<FileGenerator>();
-    await generator.Generate(options.Size.ByteLength, options.File, cancellationToken);
+    var byteLength = await generator.Generate(options.Size.ByteLength, options.File, cancellationToken);
 
+    Console.WriteLine($"File has been generated with {FileSizeFormatter.FormatSize(byteLength)}");
     return 0;
 }
 async Task<int> Verify(VerifyOption options, IServiceProvider sp, CancellationToken cancellationToken)

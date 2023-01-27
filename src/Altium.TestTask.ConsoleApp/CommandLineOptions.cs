@@ -28,11 +28,6 @@ class CreateOption
 
     public void Validate()
     {
-        if (!System.IO.File.Exists(File))
-        {
-            throw new ArgumentException("File does not exists");
-        }
-
         if (Size.ByteLength is < 100L && Size.ByteLength > 128849018880L)
         {
             throw new ArgumentException("File size invalid. Please provide a value between 100 bytes nad 120 gb.");
@@ -63,8 +58,8 @@ sealed class Size
         var rs = _regex.Match(size);
         if (rs.Success)
         {
-            var length = long.Parse(rs.Groups[0].Value);
-            ByteLength = rs.Groups[1].Value switch
+            var length = long.Parse(rs.Groups[1].Value);
+            ByteLength = rs.Groups[2].Value switch
             {
                 "mb" => length * 1024 * 1024,
                 "kb" => length * 1024,

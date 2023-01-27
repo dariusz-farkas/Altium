@@ -45,10 +45,7 @@ internal class FilePartitioner : IPartitioner
 
             while ((bytesRead = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
             {
-                _logger.LogInformation("Partitioning: stream position: {sourcePosition} out of {sourceLength}",
-                    source.Position, source.Length);
-
-                int remainingBytesInBuffer = bytesRead;
+               int remainingBytesInBuffer = bytesRead;
 
                 var bufferOffset = 0;
 
@@ -70,12 +67,15 @@ internal class FilePartitioner : IPartitioner
                             if (totalBytesWritten + length >= _partitionOptions.Value.FileSize)
                             {
                                 await fileProvider.WriteAsync(buffer, bufferOffset, length, cancellationToken);
-                                
+
                                 bufferOffset += length;
 
                                 remainingBytesInBuffer -= length;
 
                                 files.Add(new FileData(fileProvider.FileName, lines));
+                                _logger.LogInformation("Data splitted to {fileName}. stream position: {sourcePosition} out of {sourceLength}",
+                                    fileProvider.FileName, source.Position, source.Length);
+
                                 await fileProvider.Complete();
 
                                 lines = 0;
@@ -104,26 +104,13 @@ internal class FilePartitioner : IPartitioner
             if (fileProvider.IsAwaiting())
             {
                 files.Add(new FileData(fileProvider.FileName, lines));
+                _logger.LogInformation("Data splitted to {fileName}.", fileProvider.FileName);
             }
 
             await fileProvider.DisposeAsync();
         }
 
         return new PartitionData(files);
-    }
-
-    private static int CountLines(byte[] buffer, int offset, int bytesRead)
-    {
-        var lines = 0;
-        for (var i = offset; i < bytesRead; i++)
-        {
-            if (buffer[i] == NewLine)
-            {
-                lines++;
-            }
-        }
-
-        return lines;
     }
 
     public sealed class OutputFileProvider : IAsyncDisposable
